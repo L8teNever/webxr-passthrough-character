@@ -1,0 +1,11 @@
+data/models/
+data/calibration/
+data/last_telemetry.json
+certs/*.pem
+__pycache__/
+*.pyc
+.venv/
+venv/
+.idea/
+.vscode/
+*.pem

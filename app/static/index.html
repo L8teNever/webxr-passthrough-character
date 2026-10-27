@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0b1220" />
+  <title>WebXR Passthrough Character</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "/static/vendor/three/three.module.js",
+      "three/addons/": "/static/vendor/three/addons/",
+      "cannon-es": "/static/vendor/cannon-es.js"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="overlay">
+    <div class="panel">
+      <h1>WebXR Passthrough</h1>
+      <p class="lede">
+        Immersive AR auf Meta Quest — Charakter im echten Raum mit Physik,
+        Controller-Grab und Kalibrierungs-Sonde.
+      </p>
+      <div class="status-row">
+        <span id="xr-status">XR wird geprüft…</span>
+        <span id="model-status">Modell wird geladen…</span>
+        <span id="ws-status">WebSocket…</span>
+      </div>
+      <div class="actions">
+        <button id="btn-enter-ar" type="button" disabled>AR starten</button>
+        <button id="btn-desktop" type="button">Desktop-Modus</button>
+      </div>
+      <ul class="hints">
+        <li><strong>Trigger</strong> — greifen / loslassen</li>
+        <li><strong>Grip</strong> — skalieren (beide Controller)</li>
+        <li><strong>A / X</strong> — Kalibrierungs-Sonde setzen</li>
+        <li><strong>B / Y</strong> — Pose wechseln / Dashboard</li>
+        <li><strong>Desktop</strong> — Maus ziehen = rotieren, Scroll = zoom, Rechtsklick = greifen</li>
+      </ul>
+    </div>
+  </div>
+
+  <div id="hud">
+    <div id="hud-pose">Pose: Standing</div>
+    <div id="hud-calib">Kalibrierung: —</div>
+    <div id="hud-contact">Kontakt: nein</div>
+  </div>
+
+  <canvas id="c"></canvas>
+
+  <script type="module" src="/static/js/app.js"></script>
+</body>
+</html>

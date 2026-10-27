@@ -1,0 +1,32 @@
+services:
+  webxr:
+    build: .
+    container_name: webxr-passthrough
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+      - ./certs:/certs
+    environment:
+      - DATA_DIR=/data
+      - CERT_DIR=/certs
+      - HOST=0.0.0.0
+      - PORT=8000
+      # Set to your PC / server LAN IP so the self-signed cert includes it (Quest HTTPS)
+      - HOST_IP=${HOST_IP:-}
+      - EXTRA_SAN=${EXTRA_SAN:-}
+      # CC0 textured + rigged casual woman (Grab3D). Override to use another GLB URL.
+      - MODEL_URL=${MODEL_URL:-https://grab3d.com/dl/woman-rigged/woman-rigged.glb}
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import ssl,urllib.request; ctx=ssl._create_unverified_context(); urllib.request.urlopen('https://127.0.0.1:8000/health', context=ctx, timeout=5)",
+        ]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+      start_period: 40s
