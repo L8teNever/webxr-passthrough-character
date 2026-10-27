@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app.model_loader import ensure_model, get_manifest
+from app.model_loader import ensure_model, get_manifest, list_models, set_active_model
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("webxr")
@@ -67,6 +67,10 @@ class CalibrationProfile(BaseModel):
 class TelemetryBatch(BaseModel):
     session_id: str | None = None
     events: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class ActiveModelRequest(BaseModel):
+    id: str = Field(..., min_length=1, max_length=64)
 
 
 class ConnectionManager:
@@ -120,6 +124,23 @@ async def health() -> dict[str, Any]:
 @app.get("/api/model")
 async def api_model() -> dict[str, Any]:
     return get_manifest()
+
+
+@app.get("/api/models")
+async def api_models() -> dict[str, Any]:
+    return list_models()
+
+
+@app.post("/api/model/active")
+async def api_set_active_model(body: ActiveModelRequest) -> JSONResponse:
+    try:
+        manifest = set_active_model(body.id)
+    except KeyError:
+        return JSONResponse({"error": f"unknown model id: {body.id}"}, status_code=404)
+    except FileNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+    await manager.broadcast({"type": "model_changed", "model": manifest})
+    return JSONResponse(manifest)
 
 
 @app.get("/api/calibration")

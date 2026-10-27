@@ -14,6 +14,9 @@ const state = {
   ws: null,
   character: null,
   clock: new THREE.Clock(),
+  activeModelId: 'casual-woman',
+  models: [],
+  loadingModel: false,
 };
 
 function setStatus(id, text, cls) {
@@ -42,6 +45,9 @@ function connectWS() {
       const msg = JSON.parse(ev.data);
       if (msg.type === 'welcome') {
         setStatus('ws-status', `WS Client ${msg.client_id.slice(0, 8)}`, 'ok');
+      }
+      if (msg.type === 'model_changed' && msg.model?.id && msg.model.id !== state.activeModelId) {
+        loadModel(msg.model.id).catch(() => {});
       }
     } catch {
       /* ignore */
@@ -116,6 +122,16 @@ physics.onContact = (active) => {
 function placeCharacter(root) {
   if (state.character) {
     scene.remove(state.character);
+    state.character.traverse((o) => {
+      if (o.geometry) o.geometry.dispose?.();
+      if (o.material) {
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const m of mats) {
+          m.map?.dispose?.();
+          m.dispose?.();
+        }
+      }
+    });
   }
   state.character = root;
   root.position.set(0, 0, -1.5);
@@ -123,33 +139,117 @@ function placeCharacter(root) {
   physics.bindCharacter(root);
   physics.syncRootFromCharacter();
   poseUI.setCharacter(root);
+  poseUI.setPose('standing');
   xrManager?.setTarget(root);
   shadow.position.x = root.position.x;
   shadow.position.z = root.position.z;
 }
 
-async function loadModel() {
-  setStatus('model-status', 'Modell wird geladen…');
-  let info = { url: '/assets/models/character.glb', procedural: false };
+function setActiveModelButtons(activeId) {
+  document.querySelectorAll('.model-btn').forEach((btn) => {
+    const id = btn.dataset.modelId;
+    btn.classList.toggle('active', id === activeId);
+  });
+  const hud = $('hud-model');
+  const label =
+    state.models.find((m) => m.id === activeId)?.label ||
+    (activeId === 'female-base' ? 'Female Base' : 'Casual Woman');
+  if (hud) hud.textContent = `Modell: ${label}`;
+}
+
+function bindModelSwitchButtons() {
+  document.querySelectorAll('.model-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.modelId;
+      if (!id || id === state.activeModelId || state.loadingModel) return;
+      selectModel(id);
+    });
+  });
+}
+
+async function refreshModelCatalog() {
   try {
-    const res = await fetch('/api/model');
-    if (res.ok) info = await res.json();
+    const res = await fetch('/api/models');
+    if (!res.ok) return;
+    const data = await res.json();
+    state.models = data.models || [];
+    if (data.active_model_id) state.activeModelId = data.active_model_id;
+    setActiveModelButtons(state.activeModelId);
+  } catch {
+    /* ignore */
+  }
+}
+
+async function selectModel(id) {
+  setStatus('model-status', `Wechsle zu ${id}…`);
+  try {
+    const res = await fetch('/api/model/active', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+    const info = await res.json();
+    await loadModel(info.id || id, info);
+    sendWS({ type: 'interaction', action: 'model_switch', model: info.id || id });
+  } catch (err) {
+    console.warn('Model switch failed', err);
+    setStatus('model-status', `Modell-Wechsel fehlgeschlagen`, 'err');
+  }
+}
+
+async function loadModel(preferredId = null, infoOverride = null) {
+  if (state.loadingModel) return;
+  state.loadingModel = true;
+  setStatus('model-status', 'Modell wird geladen…');
+
+  let info = infoOverride;
+  try {
+    if (!info) {
+      if (preferredId) {
+        const listRes = await fetch('/api/models');
+        if (listRes.ok) {
+          const list = await listRes.json();
+          state.models = list.models || [];
+          info = (list.models || []).find((m) => m.id === preferredId) || null;
+        }
+      }
+      if (!info) {
+        const res = await fetch('/api/model');
+        if (res.ok) info = await res.json();
+      }
+    }
   } catch {
     /* use default path */
   }
 
+  info = info || { url: '/assets/models/character.glb', procedural: false, id: 'casual-woman' };
+  const modelId = info.id || info.model_id || preferredId || 'casual-woman';
+  const url = info.url || '/assets/models/character.glb';
+
   const loader = new GLTFLoader();
   try {
-    const gltf = await loader.loadAsync(info.url || '/assets/models/character.glb');
-    const root = polishCharacter(gltf.scene);
+    const gltf = await loader.loadAsync(`${url}?t=${Date.now()}`);
+    const root = polishCharacter(gltf.scene, modelId);
     placeCharacter(root);
+    state.activeModelId = modelId;
+    setActiveModelButtons(modelId);
     const src = info.procedural ? 'prozedurales Fallback' : info.source || 'remote';
-    setStatus('model-status', `Modell bereit (${src})`, 'ok');
+    const label = info.label || modelId;
+    setStatus('model-status', `${label} bereit (${src})`, 'ok');
   } catch (err) {
     console.warn('GLB load failed, building client procedural humanoid', err);
     const root = buildClientHumanoid();
     placeCharacter(root);
+    state.activeModelId = modelId;
+    setActiveModelButtons(modelId);
     setStatus('model-status', 'Client-Fallback-Humanoid', 'ok');
+  } finally {
+    state.loadingModel = false;
+    refreshModelCatalog();
   }
 }
 
@@ -157,12 +257,14 @@ async function loadModel() {
  * Fix common GLB issues: duplicate high-poly overlays (Z-fighting),
  * clay-only materials, broken transparency, and uneven scale/feet.
  */
-function polishCharacter(root) {
+function polishCharacter(root, modelId = 'casual-woman') {
+  const clayMode = modelId === 'female-base' || modelId?.includes('female-base');
   const clayNames = /clay|base_female|basemesh/i;
+
   root.traverse((o) => {
     const name = o.name || '';
-    // Hide MakeHuman-style high-poly overlays that cause chest/arm Z-fighting
-    if (/high[-_]?poly|proxy|helper|collision/i.test(name)) {
+    // MakeHuman high-poly / proxy overlays only — keep Grab3D clothing/hair intact
+    if (clayMode && /high[-_]?poly|proxy|helper|collision/i.test(name)) {
       o.visible = false;
       return;
     }
@@ -184,9 +286,10 @@ function polishCharacter(root) {
 
       // Promote flat clay base meshes to a readable skin tone
       const isClay =
+        clayMode ||
         clayNames.test(m.name || '') ||
         (!m.map && m.color && m.color.getHex() < 0x555555);
-      if (isClay && m.isMeshStandardMaterial) {
+      if (isClay && m.isMeshStandardMaterial && !m.map) {
         m.color.setHex(0xe0b090);
         m.roughness = 0.58;
         m.metalness = 0.02;
@@ -444,6 +547,7 @@ renderer.setAnimationLoop(() => {
 });
 
 /* boot */
+bindModelSwitchButtons();
 connectWS();
 checkXR();
-loadModel();
+refreshModelCatalog().then(() => loadModel(state.activeModelId));

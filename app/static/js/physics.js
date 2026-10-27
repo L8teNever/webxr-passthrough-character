@@ -5,7 +5,9 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 
-// Soft-body depth A — female-tuned spring/damping for torso / breast / glute / thigh
+// Soft-body depth A — female-tuned spring/damping for torso / breast / glute / thigh.
+// deformBone: only helper soft-bones may rewrite local bone positions.
+// Structural bones stay collision-only so skinned meshes keep their bind pose.
 const SOFT_CLUSTERS = [
   {
     id: 'torso',
@@ -17,19 +19,20 @@ const SOFT_CLUSTERS = [
     stiffness: 48,
     damping: 7.5,
     radius: 0.11,
+    deformBone: false,
   },
   {
     id: 'chest',
     boneNames: [
       'spine02', 'Spine02', 'spine01', 'Chest', 'Spine2',
-      'mixamorigSpine2', 'ChestEnd', 'upperchest', 'neck',
+      'mixamorigSpine2', 'ChestEnd', 'upperchest',
     ],
     mass: 0.42,
     stiffness: 36,
     damping: 6.2,
     radius: 0.11,
+    deformBone: false,
   },
-  // Dedicated soft bodies for secondary breast motion (bilateral)
   {
     id: 'breastL',
     boneNames: ['breast.L', 'BreastL', 'breast_L', 'Breast_L', 'LeftBreast', 'boob_L'],
@@ -37,6 +40,8 @@ const SOFT_CLUSTERS = [
     stiffness: 16,
     damping: 3.6,
     radius: 0.085,
+    deformBone: true,
+    maxOffset: 0.045,
   },
   {
     id: 'breastR',
@@ -45,6 +50,8 @@ const SOFT_CLUSTERS = [
     stiffness: 16,
     damping: 3.6,
     radius: 0.085,
+    deformBone: true,
+    maxOffset: 0.045,
   },
   {
     id: 'pelvis',
@@ -53,23 +60,27 @@ const SOFT_CLUSTERS = [
     stiffness: 34,
     damping: 6.5,
     radius: 0.15,
+    deformBone: false,
   },
-  // Dedicated soft bodies for gluteal secondary motion (bilateral)
   {
     id: 'gluteL',
-    boneNames: ['GluteL', 'glute_L', 'ButtL', 'LeftButtock', 'pelvis.L'],
+    boneNames: ['GluteL', 'glute_L', 'ButtL', 'LeftButtock'],
     mass: 0.34,
     stiffness: 18,
     damping: 4.4,
     radius: 0.1,
+    deformBone: true,
+    maxOffset: 0.04,
   },
   {
     id: 'gluteR',
-    boneNames: ['GluteR', 'glute_R', 'ButtR', 'RightButtock', 'pelvis.R'],
+    boneNames: ['GluteR', 'glute_R', 'ButtR', 'RightButtock'],
     mass: 0.34,
     stiffness: 18,
     damping: 4.4,
     radius: 0.1,
+    deformBone: true,
+    maxOffset: 0.04,
   },
   {
     id: 'thighL',
@@ -81,6 +92,7 @@ const SOFT_CLUSTERS = [
     stiffness: 40,
     damping: 7,
     radius: 0.09,
+    deformBone: false,
   },
   {
     id: 'thighR',
@@ -92,6 +104,7 @@ const SOFT_CLUSTERS = [
     stiffness: 40,
     damping: 7,
     radius: 0.09,
+    deformBone: false,
   },
 ];
 
@@ -114,7 +127,9 @@ function findBone(skeleton, names) {
 export class PhysicsSystem {
   constructor(scene) {
     this.scene = scene;
-    this.world = new CANNON.World({ gravity: new CANNON.Vec3(0, -2.5, 0) });
+    // Zero world gravity — secondary soft motion is spring-driven only.
+    // Gravity on soft spheres previously yanked skinned bones and collapsed meshes.
+    this.world = new CANNON.World({ gravity: new CANNON.Vec3(0, 0, 0) });
     this.world.broadphase = new CANNON.SAPBroadphase(this.world);
     this.world.allowSleep = true;
     this.world.defaultContactMaterial.friction = 0.35;
@@ -208,14 +223,16 @@ export class PhysicsSystem {
         mass: cluster.mass,
         shape: new CANNON.Sphere(cluster.radius),
         position: new CANNON.Vec3(this._tmpV.x, this._tmpV.y, this._tmpV.z),
-        linearDamping: 0.4,
-        angularDamping: 0.6,
+        linearDamping: 0.55,
+        angularDamping: 0.7,
         collisionFilterGroup: 2,
         collisionFilterMask: 1 | 4, // collide with ground + probe
       });
       body._clusterId = cluster.id;
       body._restLocal = bone.position.clone();
       body._bone = bone;
+      body._deformBone = !!cluster.deformBone;
+      body._maxOffset = cluster.maxOffset ?? 0.04;
       body._stiffness = cluster.stiffness;
       body._damping = cluster.damping;
       body._anchor = this._tmpV.clone();
@@ -271,6 +288,7 @@ export class PhysicsSystem {
       body._anchor = new THREE.Vector3(p.x, p.y, p.z);
       body._localOffset = new THREE.Vector3(...a.offset);
       body._bone = null;
+      body._deformBone = false;
       body._radius = a.radius;
       this.world.addBody(body);
       this.softBodies.push(body);
@@ -418,13 +436,20 @@ export class PhysicsSystem {
       body.velocity.y += (dy * k - body.velocity.y * d) * dt;
       body.velocity.z += (dz * k - body.velocity.z * d) * dt;
 
-      // Secondary motion onto bone
-      if (body._bone) {
+      // Secondary motion onto helper soft-bones only (never structural spine/hips/thigh)
+      if (body._bone && body._deformBone) {
         const parent = body._bone.parent;
         if (parent) {
           parent.updateWorldMatrix(true, false);
           const world = new THREE.Vector3(body.position.x, body.position.y, body.position.z);
           const local = parent.worldToLocal(world.clone());
+          const rest = body._restLocal;
+          if (rest) {
+            const max = body._maxOffset ?? 0.04;
+            local.x = THREE.MathUtils.clamp(local.x, rest.x - max, rest.x + max);
+            local.y = THREE.MathUtils.clamp(local.y, rest.y - max, rest.y + max);
+            local.z = THREE.MathUtils.clamp(local.z, rest.z - max, rest.z + max);
+          }
           body._bone.position.lerp(local, 0.35);
         }
       }

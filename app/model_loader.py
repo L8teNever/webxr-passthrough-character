@@ -1,4 +1,4 @@
-"""Download a textured GLB character or prepare a procedural fallback marker."""
+"""Download textured / clay female GLBs and keep a dual-model catalog."""
 
 from __future__ import annotations
 
@@ -18,26 +18,73 @@ DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
 MODELS_DIR = DATA_DIR / "models"
 MODEL_PATH = MODELS_DIR / "character.glb"
 MANIFEST_PATH = MODELS_DIR / "manifest.json"
+CATALOG_PATH = MODELS_DIR / "catalog.json"
 
 # Bundled offline seed (textured casual female) shipped with the image
 BUNDLED_FALLBACK = Path(__file__).parent / "static" / "models" / "fallback-character.glb"
 
-# CC0 textured + rigged casual woman (Grab3D) — finished look with PBR maps
-MODEL_ID = "grab3d-casual-woman-rigged-v1"
-DEFAULT_MODEL_URL = "https://grab3d.com/dl/woman-rigged/woman-rigged.glb"
+DEFAULT_ACTIVE_ID = "casual-woman"
 
-# Alternate mirrors tried if the primary URL fails
-FALLBACK_URLS = [
-    "https://grab3d.com/dl/woman/woman-light.glb",
-    "https://www.innerscene.com/api/library/"
-    "low-poly-character-casual-female-t-pose-rigged-e3f33b11/download",
-    "https://cdn.jsdelivr.net/gh/mrdoob/three.js@r168/examples/models/gltf/Xbot.glb",
-]
+# Dual catalog: textured Grab3D default + MakeHuman clay base with soft bones
+MODEL_CATALOG: dict[str, dict[str, Any]] = {
+    "casual-woman": {
+        "id": "casual-woman",
+        "label": "Casual Woman",
+        "gender": "female",
+        "license": "CC0",
+        "filename": "casual-woman.glb",
+        "download_url": "https://grab3d.com/dl/woman-rigged/woman-rigged.glb",
+        "fallback_urls": [
+            "https://grab3d.com/dl/woman/woman-light.glb",
+            "https://www.innerscene.com/api/library/"
+            "low-poly-character-casual-female-t-pose-rigged-e3f33b11/download",
+        ],
+        "soft_bones": [
+            "Spine02",
+            "Spine01",
+            "Hips",
+            "LeftUpLeg",
+            "RightUpLeg",
+        ],
+        "polish": "textured",
+        "default": True,
+    },
+    "female-base": {
+        "id": "female-base",
+        "label": "Female Base",
+        "gender": "female",
+        "license": "CC0",
+        "filename": "female-base.glb",
+        "download_url": (
+            "https://www.innerscene.com/api/library/"
+            "female-base-mesh-3d-person-rigged-a-pose-dba97ed5/download"
+        ),
+        "fallback_urls": [
+            "https://www.innerscene.com/api/library/"
+            "low-poly-character-casual-female-t-pose-rigged-e3f33b11/download",
+        ],
+        "soft_bones": [
+            "breast.L",
+            "breast.R",
+            "spine02",
+            "spine04",
+            "root",
+            "upperleg01.L",
+            "upperleg01.R",
+        ],
+        "polish": "clay",
+        "default": False,
+    },
+}
+
+
+def _write_json(path: Path, payload: dict[str, Any]) -> None:
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def _write_manifest(payload: dict[str, Any]) -> None:
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
-    MANIFEST_PATH.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    _write_json(MANIFEST_PATH, payload)
 
 
 def _download(url: str, dest: Path, timeout: float = 120.0) -> None:
@@ -46,6 +93,7 @@ def _download(url: str, dest: Path, timeout: float = 120.0) -> None:
         data = resp.read()
     if len(data) < 12 or data[:4] != b"glTF":
         raise ValueError(f"Downloaded content is not a valid GLB: {url}")
+    dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(data)
 
 
@@ -109,22 +157,22 @@ def _build_procedural_glb() -> bytes:
             indices.extend([base + a, base + b, base + c, base + a, base + c, base + d])
 
     # Female proportions (narrower shoulders, wider hips, soft clusters)
-    add_box(0.0, 0.95, 0.0, 0.34, 0.18, 0.20, 0)   # hips
-    add_box(0.0, 1.15, 0.0, 0.24, 0.22, 0.14, 1)   # spine / torso
+    add_box(0.0, 0.95, 0.0, 0.34, 0.18, 0.20, 0)  # hips
+    add_box(0.0, 1.15, 0.0, 0.24, 0.22, 0.14, 1)  # spine / torso
     add_box(0.0, 1.36, 0.04, 0.28, 0.22, 0.16, 2)  # chest
-    add_box(0.0, 1.56, 0.0, 0.09, 0.10, 0.09, 3)   # neck
-    add_box(0.0, 1.70, 0.0, 0.17, 0.19, 0.17, 4)   # head
+    add_box(0.0, 1.56, 0.0, 0.09, 0.10, 0.09, 3)  # neck
+    add_box(0.0, 1.70, 0.0, 0.17, 0.19, 0.17, 4)  # head
     add_box(-0.11, 0.64, 0.0, 0.13, 0.36, 0.13, 5)  # L upleg
     add_box(-0.11, 0.28, 0.0, 0.10, 0.34, 0.10, 6)  # L leg
-    add_box(0.11, 0.64, 0.0, 0.13, 0.36, 0.13, 7)   # R upleg
-    add_box(0.11, 0.28, 0.0, 0.10, 0.34, 0.10, 8)   # R leg
+    add_box(0.11, 0.64, 0.0, 0.13, 0.36, 0.13, 7)  # R upleg
+    add_box(0.11, 0.28, 0.0, 0.10, 0.34, 0.10, 8)  # R leg
     add_box(-0.24, 1.38, 0.0, 0.18, 0.07, 0.07, 9)  # L shoulder
-    add_box(-0.38, 1.18, 0.0, 0.07, 0.30, 0.07, 10) # L arm
+    add_box(-0.38, 1.18, 0.0, 0.07, 0.30, 0.07, 10)  # L arm
     add_box(0.24, 1.38, 0.0, 0.18, 0.07, 0.07, 11)  # R shoulder
     add_box(0.38, 1.18, 0.0, 0.07, 0.30, 0.07, 12)  # R arm
     add_box(-0.10, 1.34, 0.12, 0.14, 0.13, 0.13, 13)  # breast L soft
-    add_box(0.10, 1.34, 0.12, 0.14, 0.13, 0.13, 14)   # breast R soft
-    add_box(-0.10, 0.92, -0.10, 0.14, 0.14, 0.12, 15) # glute L soft
+    add_box(0.10, 1.34, 0.12, 0.14, 0.13, 0.13, 14)  # breast R soft
+    add_box(-0.10, 0.92, -0.10, 0.14, 0.14, 0.12, 15)  # glute L soft
     add_box(0.10, 0.92, -0.10, 0.14, 0.14, 0.12, 16)  # glute R soft
 
     pos_bytes = struct.pack(f"<{len(positions)}f", *positions)
@@ -182,23 +230,13 @@ def _build_procedural_glb() -> bytes:
     nodes = []
     for name, parent, translation in bone_defs:
         node: dict[str, Any] = {"name": name, "translation": translation}
-        children = [
-            name_to_index[child]
-            for child, p, _ in bone_defs
-            if p == name
-        ]
+        children = [name_to_index[child] for child, p, _ in bone_defs if p == name]
         if children:
             node["children"] = children
         nodes.append(node)
 
     mesh_node_index = len(nodes)
-    nodes.append(
-        {
-            "name": "HumanoidMesh",
-            "mesh": 0,
-            "skin": 0,
-        }
-    )
+    nodes.append({"name": "HumanoidMesh", "mesh": 0, "skin": 0})
 
     accessors = [
         {
@@ -315,122 +353,232 @@ def _build_procedural_glb() -> bytes:
     return header + json_header + json_chunk + bin_header + bin_chunk
 
 
-def _cached_manifest_is_current() -> dict[str, Any] | None:
-    """Return cached manifest only if it matches the preferred textured model id."""
-    if not (MODEL_PATH.exists() and MODEL_PATH.stat().st_size > 12 and MANIFEST_PATH.exists()):
-        return None
-    try:
-        manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return None
-    if manifest.get("model_id") == MODEL_ID:
-        logger.info("Using cached textured model at %s", MODEL_PATH)
-        return manifest
-    logger.info(
-        "Cached model id %r != preferred %r — re-downloading",
-        manifest.get("model_id"),
-        MODEL_ID,
-    )
-    return None
+def _model_file(entry: dict[str, Any]) -> Path:
+    return MODELS_DIR / entry["filename"]
 
 
-def _install_bundled_seed() -> dict[str, Any] | None:
+def _public_url(entry: dict[str, Any]) -> str:
+    return f"/assets/models/{entry['filename']}"
+
+
+def _read_catalog_state() -> dict[str, Any]:
+    if CATALOG_PATH.exists():
+        try:
+            return json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            pass
+    return {"active_model_id": DEFAULT_ACTIVE_ID, "models": {}}
+
+
+def _write_catalog_state(state: dict[str, Any]) -> None:
+    _write_json(CATALOG_PATH, state)
+
+
+def _entry_manifest(
+    entry: dict[str, Any],
+    *,
+    source: str,
+    procedural: bool = False,
+    download_url: str | None = None,
+    error: str | None = None,
+    active: bool = False,
+) -> dict[str, Any]:
+    path = _model_file(entry)
+    payload: dict[str, Any] = {
+        "id": entry["id"],
+        "model_id": entry["id"],
+        "label": entry["label"],
+        "gender": entry["gender"],
+        "license": entry.get("license", "unknown"),
+        "source": source,
+        "path": str(path),
+        "url": _public_url(entry),
+        "procedural": procedural,
+        "bytes": path.stat().st_size if path.exists() else 0,
+        "soft_bones": list(entry.get("soft_bones") or []),
+        "polish": entry.get("polish", "textured"),
+        "ready": path.exists() and path.stat().st_size > 12,
+        "active": active,
+    }
+    if download_url:
+        payload["download_url"] = download_url
+    if error:
+        payload["error"] = error
+    return payload
+
+
+def _install_bundled_for(entry: dict[str, Any]) -> dict[str, Any] | None:
     if not BUNDLED_FALLBACK.exists() or BUNDLED_FALLBACK.stat().st_size < 12:
         return None
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(BUNDLED_FALLBACK, MODEL_PATH)
-    manifest = {
-        "source": "bundled",
-        "model_id": f"{MODEL_ID}-bundled-seed",
-        "gender": "female",
-        "license": "CC0",
-        "path": str(MODEL_PATH),
-        "url": "/assets/models/character.glb",
-        "procedural": False,
-        "bytes": MODEL_PATH.stat().st_size,
-        "soft_bones": ["spine", "pelvis", "thigh.L", "thigh.R", "neck"],
-    }
-    _write_manifest(manifest)
-    logger.info("Installed bundled textured seed (%s bytes)", manifest["bytes"])
-    return manifest
+    dest = _model_file(entry)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(BUNDLED_FALLBACK, dest)
+    return _entry_manifest(entry, source="bundled", procedural=False)
 
 
-def ensure_model() -> dict[str, Any]:
-    """Ensure a textured female character model exists on disk."""
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+def _write_procedural_for(entry: dict[str, Any], error: str | None = None) -> dict[str, Any]:
+    dest = _model_file(entry)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_bytes(_build_procedural_glb())
+    return _entry_manifest(
+        entry,
+        source="procedural",
+        procedural=True,
+        error=error,
+    )
 
-    cached = _cached_manifest_is_current()
-    if cached is not None:
-        return cached
 
-    primary = os.environ.get("MODEL_URL", DEFAULT_MODEL_URL)
-    candidates = [primary, *[u for u in FALLBACK_URLS if u != primary]]
+def _ensure_single_model(entry: dict[str, Any], force: bool = False) -> dict[str, Any]:
+    dest = _model_file(entry)
+    if not force and dest.exists() and dest.stat().st_size > 12:
+        logger.info("Using cached model %s (%s bytes)", entry["id"], dest.stat().st_size)
+        return _entry_manifest(entry, source="cache")
+
+    primary = entry["download_url"]
+    # Allow env override only for the default textured model
+    if entry["id"] == DEFAULT_ACTIVE_ID:
+        primary = os.environ.get("MODEL_URL", primary)
+    candidates = [primary, *[u for u in entry.get("fallback_urls", []) if u != primary]]
     last_error: Exception | None = None
 
     for url in candidates:
         try:
-            logger.info("Downloading model from %s", url)
-            _download(url, MODEL_PATH)
-            is_preferred = url == DEFAULT_MODEL_URL or url == primary
-            manifest = {
-                "source": "remote",
-                "model_id": MODEL_ID if is_preferred else f"fallback:{url.rsplit('/', 1)[-1]}",
-                "gender": "female",
-                "license": "CC0" if is_preferred else "unknown",
-                "download_url": url,
-                "path": str(MODEL_PATH),
-                "url": "/assets/models/character.glb",
-                "procedural": False,
-                "bytes": MODEL_PATH.stat().st_size,
-                "soft_bones": [
-                    "Spine02",
-                    "Spine01",
-                    "Hips",
-                    "LeftUpLeg",
-                    "RightUpLeg",
-                    "spine",
-                    "pelvis",
-                    "thigh.L",
-                    "thigh.R",
-                ],
-            }
-            _write_manifest(manifest)
-            logger.info("Model downloaded (%s bytes)", manifest["bytes"])
-            return manifest
+            logger.info("Downloading %s from %s", entry["id"], url)
+            _download(url, dest)
+            return _entry_manifest(
+                entry,
+                source="remote",
+                download_url=url,
+            )
         except (URLError, TimeoutError, ValueError, OSError) as exc:
             last_error = exc
-            logger.warning("Download failed for %s: %s", url, exc)
+            logger.warning("Download failed for %s (%s): %s", entry["id"], url, exc)
 
-    bundled = _install_bundled_seed()
-    if bundled is not None:
-        bundled["error"] = str(last_error) if last_error else "download failed"
-        _write_manifest(bundled)
-        return bundled
+    # Prefer bundled seed for textured default; procedural for clay base
+    if entry["id"] == DEFAULT_ACTIVE_ID:
+        bundled = _install_bundled_for(entry)
+        if bundled is not None:
+            bundled["error"] = str(last_error) if last_error else "download failed"
+            return bundled
 
-    logger.warning(
-        "All downloads failed (%s). Writing procedural female humanoid fallback.",
-        last_error,
+    return _write_procedural_for(
+        entry,
+        error=str(last_error) if last_error else "download failed",
     )
-    MODEL_PATH.write_bytes(_build_procedural_glb())
-    manifest = {
-        "source": "procedural",
-        "model_id": f"{MODEL_ID}-procedural",
-        "gender": "female",
-        "path": str(MODEL_PATH),
-        "url": "/assets/models/character.glb",
-        "procedural": True,
-        "error": str(last_error) if last_error else "unknown",
-        "bytes": MODEL_PATH.stat().st_size,
-        "soft_bones": ["BreastL", "BreastR", "GluteL", "GluteR", "Chest", "Spine"],
-    }
-    _write_manifest(manifest)
-    return manifest
+
+
+def _publish_active(active_id: str, models: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """Copy active file to character.glb and write active manifest."""
+    if active_id not in models:
+        active_id = next(iter(models), DEFAULT_ACTIVE_ID)
+    entry = MODEL_CATALOG[active_id]
+    src = _model_file(entry)
+    if not src.exists():
+        raise FileNotFoundError(f"Active model file missing: {src}")
+
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(src, MODEL_PATH)
+
+    active = dict(models[active_id])
+    active["active"] = True
+    active["active_model_id"] = active_id
+    # Keep legacy character.glb URL as alias for the active model
+    active["character_url"] = "/assets/models/character.glb"
+    _write_manifest(active)
+    _write_catalog_state({"active_model_id": active_id, "models": models})
+    return active
+
+
+def ensure_model() -> dict[str, Any]:
+    """Ensure both catalog models exist; publish the active one as character.glb."""
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    state = _read_catalog_state()
+    active_id = state.get("active_model_id") or DEFAULT_ACTIVE_ID
+    if active_id not in MODEL_CATALOG:
+        active_id = DEFAULT_ACTIVE_ID
+
+    # Migrate legacy character.glb into casual-woman if needed
+    casual_path = _model_file(MODEL_CATALOG["casual-woman"])
+    if (
+        not casual_path.exists()
+        and MODEL_PATH.exists()
+        and MODEL_PATH.stat().st_size > 12
+    ):
+        try:
+            manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8")) if MANIFEST_PATH.exists() else {}
+        except json.JSONDecodeError:
+            manifest = {}
+        if "female-base" not in str(manifest.get("model_id", "")):
+            shutil.copyfile(MODEL_PATH, casual_path)
+            logger.info("Migrated legacy character.glb → casual-woman.glb")
+
+    models: dict[str, dict[str, Any]] = {}
+    for mid, entry in MODEL_CATALOG.items():
+        models[mid] = _ensure_single_model(entry)
+
+    return _publish_active(active_id, models)
+
+
+def list_models() -> dict[str, Any]:
+    state = _read_catalog_state()
+    active_id = state.get("active_model_id") or DEFAULT_ACTIVE_ID
+    items = []
+    for mid, entry in MODEL_CATALOG.items():
+        path = _model_file(entry)
+        cached = (state.get("models") or {}).get(mid) or {}
+        ready = path.exists() and path.stat().st_size > 12
+        items.append(
+            {
+                "id": mid,
+                "label": entry["label"],
+                "url": _public_url(entry),
+                "gender": entry["gender"],
+                "license": entry.get("license"),
+                "soft_bones": list(entry.get("soft_bones") or []),
+                "polish": entry.get("polish"),
+                "ready": ready,
+                "active": mid == active_id,
+                "bytes": path.stat().st_size if ready else cached.get("bytes", 0),
+                "procedural": bool(cached.get("procedural")),
+                "source": cached.get("source"),
+            }
+        )
+    return {"active_model_id": active_id, "models": items}
+
+
+def set_active_model(model_id: str) -> dict[str, Any]:
+    if model_id not in MODEL_CATALOG:
+        raise KeyError(f"Unknown model id: {model_id}")
+    entry = MODEL_CATALOG[model_id]
+    info = _ensure_single_model(entry)
+    state = _read_catalog_state()
+    models = dict(state.get("models") or {})
+    # Refresh entries we know about
+    for mid, cat in MODEL_CATALOG.items():
+        if mid == model_id:
+            models[mid] = info
+        elif mid not in models:
+            models[mid] = _entry_manifest(cat, source="cache" if _model_file(cat).exists() else "missing")
+        else:
+            models[mid] = _entry_manifest(
+                cat,
+                source=models[mid].get("source", "cache"),
+                procedural=bool(models[mid].get("procedural")),
+                download_url=models[mid].get("download_url"),
+            )
+            models[mid]["active"] = False
+    return _publish_active(model_id, models)
 
 
 def get_manifest() -> dict[str, Any]:
     if MANIFEST_PATH.exists():
         try:
-            return json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+            data = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+            if "id" not in data and data.get("model_id"):
+                data["id"] = data["model_id"]
+            if "active_model_id" not in data and data.get("id"):
+                data["active_model_id"] = data["id"]
+            return data
         except json.JSONDecodeError:
             pass
     return ensure_model()
@@ -439,3 +587,4 @@ def get_manifest() -> dict[str, Any]:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     print(json.dumps(ensure_model(), indent=2))
+    print(json.dumps(list_models(), indent=2))

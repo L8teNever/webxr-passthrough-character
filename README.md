@@ -4,6 +4,8 @@ Lokale, produktionsfähige 3D-WebXR-Anwendung für **Meta Quest 2 / 3 / Pro** mi
 
 ## Schnellstart
 
+**Windows:** `die.bat` doppelklicken — klont/aktualisiert das Repo von GitHub nach `%USERPROFILE%\webxr-passthrough-character` (oder nutzt den Ordner neben der `.bat`) und startet Docker Compose LAN-weit auf Port 8000.
+
 ```bash
 docker compose up --build
 ```
@@ -31,7 +33,7 @@ Das selbstsignierte Zertifikat muss im Quest-Browser einmalig akzeptiert werden 
 | Bereich | Umsetzung |
 |--------|-----------|
 | Backend | FastAPI + WebSocket (`/ws`), HTTPS via OpenSSL im Container-Start |
-| Assets | GLB-Download (CC0 textured Casual Woman, Grab3D, rigged) → Volume `./data`; bundled textured seed + prozedurales Fallback |
+| Assets | Zwei CC0-Modelle: **Casual Woman** (Grab3D, texturiert) + **Female Base** (MakeHuman/Innerscene, Soft-Bones) → `./data/models`; Umschalter im HUD; bundled seed + prozedurales Fallback |
 | Frontend | Three.js + cannon-es lokal unter `/static/vendor` (kein externes CDN nötig) |
 | WebXR | `immersive-ar`, `local-floor`, optional `hand-tracking`, transparentes Canvas (Passthrough) |
 | Interaktion | Raycaster-Grab, Zwei-Hand-Skalierung, Rotation, Haptik, Desktop-Maus-Fallback |
@@ -80,7 +82,9 @@ Das selbstsignierte Zertifikat muss im Quest-Browser einmalig akzeptiert werden 
 ## API
 
 - `GET /health` — Status + Modell-Manifest  
-- `GET /api/model` — Modell-URL / Quelle  
+- `GET /api/model` — aktives Modell (URL / Quelle / `id`)  
+- `GET /api/models` — Katalog beider Modelle (`ready`, `active`, Soft-Bones)  
+- `POST /api/model/active` — aktives Modell setzen (`{ "id": "casual-woman" \| "female-base" }`)  
 - `GET|POST /api/calibration` — Kalibrierungsprofile  
 - `WS /ws` — Telemetrie, Interaktion, Kalibrierung (`type`: `telemetry` \| `interaction` \| `calibration` \| `ping`)  
 
@@ -107,9 +111,16 @@ Daten (`./data`) und Zertifikate (`./certs`) bleiben als Volumes persistent. Por
 
 Passthrough erscheint nur in einer echten `immersive-ar`-Session auf dem Headset; Desktop zeigt die Szene mit transparentem Hintergrund über dem UI.
 
-## Charakter-Modell
+## Charakter-Modelle
 
-Standard ist die **CC0 Casual Woman (rigged)** von Grab3D — texturiert (PBR), Kleidung, Haare, fertiger Look. Das frühere untexturierte MakeHuman-Clay-Mesh (inkl. High-Poly-Overlay / Z-Fighting an Brust & Kopf) wurde ersetzt. Soft-Body-Cluster greifen auf Spine/Hips/Beine zu; fehlende Soft-Bones werden synthetisch ergänzt.
+Zwei Modelle liegen parallel unter `data/models/` und lassen sich im Overlay/HUD umschalten:
+
+| ID | Asset | Hinweis |
+|----|--------|---------|
+| `casual-woman` (Default) | Grab3D CC0 Casual Woman | texturiert (PBR), Kleidung, Haare |
+| `female-base` | Innerscene MakeHuman Female Base | Clay + Soft-Bones `breast.L`/`breast.R`; High-Poly-Overlay wird ausgeblendet |
+
+Soft-Body schreibt nur in Helper-Bones (Brust/Glute); strukturelle Knochen (Spine/Hips/Thigh) bleiben Kollision/Feder ohne Mesh-Deformation. Fehlende Soft-Bones werden synthetisch ergänzt.
 
 ## Lokaler Dev-Start (ohne Docker)
 

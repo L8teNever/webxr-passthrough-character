@@ -33,6 +33,13 @@
         <button id="btn-enter-ar" type="button" disabled>AR starten</button>
         <button id="btn-desktop" type="button">Desktop-Modus</button>
       </div>
+      <div class="model-switch" aria-label="Modell wählen">
+        <span class="model-switch-label">Modell</span>
+        <div class="model-switch-btns" id="overlay-model-btns">
+          <button type="button" class="model-btn" data-model-id="casual-woman">Casual Woman</button>
+          <button type="button" class="model-btn" data-model-id="female-base">Female Base</button>
+        </div>
+      </div>
       <ul class="hints">
         <li><strong>Trigger</strong> — greifen / loslassen</li>
         <li><strong>Grip</strong> — skalieren (beide Controller)</li>
@@ -45,8 +52,13 @@
 
   <div id="hud">
     <div id="hud-pose">Pose: Standing</div>
+    <div id="hud-model">Modell: —</div>
     <div id="hud-calib">Kalibrierung: —</div>
     <div id="hud-contact">Kontakt: nein</div>
+    <div class="hud-model-btns" id="hud-model-btns">
+      <button type="button" class="model-btn" data-model-id="casual-woman">Casual</button>
+      <button type="button" class="model-btn" data-model-id="female-base">Base</button>
+    </div>
   </div>
 
   <canvas id="c"></canvas>

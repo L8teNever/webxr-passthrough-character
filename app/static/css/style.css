@@ -147,6 +147,46 @@ button:not(:disabled):active {
   color: var(--ink);
 }
 
+.model-switch {
+  display: grid;
+  gap: 0.45rem;
+  margin-bottom: 1rem;
+}
+
+.model-switch-label {
+  font-size: 0.78rem;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.model-switch-btns,
+.hud-model-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.model-btn {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--ink);
+  border-radius: 10px;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.model-btn.active {
+  background: rgba(61, 214, 198, 0.18);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.model-btn:disabled {
+  opacity: 0.4;
+}
+
 .hints {
   list-style: none;
   display: grid;
@@ -182,6 +222,17 @@ button:not(:disabled):active {
 
 #hud.visible {
   opacity: 1;
+  pointer-events: auto;
+}
+
+#hud .hud-model-btns {
+  margin-top: 0.2rem;
+  pointer-events: auto;
+}
+
+#hud .model-btn {
+  padding: 0.3rem 0.55rem;
+  font-size: 0.72rem;
 }
 
 #hud-contact.hit {
